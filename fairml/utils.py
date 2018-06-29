@@ -71,6 +71,27 @@ def replace_column_of_matrix(X, col_num, random_sample,
 
     return X
 
+'''
+    ci_transform -> The function that transforms the data for prediction
+    function to work.
+'''
+
+def detect_feature_sign(predict_function, ci_transform, X, col_num):
+
+    normal_output = predict_function(ci_transform(X))
+    column_range = X[:, col_num].max() - X[:, col_num].min()
+
+    X[:, col_num] = X[:, col_num] + np.repeat(column_range, X.shape[0])
+    new_output = predict_function(ci_transform(X))
+
+    diff = new_output - normal_output
+    total_diff = np.mean(diff)
+
+    if total_diff >= 0:
+        return 1
+    else:
+        return -1
+
 
 def detect_feature_sign(predict_function, X, col_num):
 

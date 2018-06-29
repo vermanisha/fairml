@@ -117,6 +117,160 @@ def obtain_orthogonal_transformed_matrix(X, baseline_vector,
     return X
 
 
+def audit_model_with_data_transform(predict_function,ci_transform, input_dataframe, distance_metric="mse",
+                direct_input_pertubation_strategy="constant-zero",
+                number_of_runs=10, include_interactions=False,
+                external_data_set=None):
+    """
+    Estimator -> Black-box function that has a predict method
+
+    ci_transform -> Function that modifies the input such that the prediction function can run. 
+    Currently inefficient because sometimes you may be calling a very heavy procedure to repeatedly 
+    modify input dataframe. 
+
+    input_dataframe -> dataframe with shape (n_samples, n_features)
+
+    distance_metric -> one of ["mse", "accuracy"], this
+                variable defaults to regression.
+
+    direct_input_pertubation_strategy -> This is referring to how to zero out a
+                            single variable. One of three different options
+                            1) replace with a random constant value
+                            2) replace with median constant value
+                            3) replace all values with a random permutation of
+                               the column.  options = [constant-zero,
+                               constant-median, global-permutation]
+
+    number_of_runs -> number of runs to perform.
+
+    external_data_set ->data that did not go into training the model, but
+                        that you'd like to see what impact that data
+                        has on the black box model.
+
+                        (VERY IMPORTANT if enabled.)
+                        You need to make sure that number of rows in this
+                        dataframe matches that of the input data. This is
+                        because we'll be using the input_dataframe as a
+                        foundational dataset and making the columns of that
+                        matrix orthogonal to each of the different columns in
+                        this data frame to check their influence.
+
+
+    """
+    assert isinstance(input_dataframe, pd.DataFrame), ("Data must be a pandas "
+                                                       "dataframe")
+    assert distance_metric in ["mse", "accuracy"], ("Distance metric must be "
+                                                    "'mse' or 'accuracy'")
+    assert direct_input_pertubation_strategy in ["constant-zero",
+                                                 "constant-median",
+                                                 "random-sample"
+                                                 ], ("Perturbation strategy "
+                                                     "must be one of: "
+                                                     "constant-zero, "
+                                                     "constant-median"
+                                                     "random-sample ")
+
+    # either pass in a perturbation function for direct perturbation
+    # see perturbation functions
+    if not six.callable(direct_input_pertubation_strategy):
+        try:
+            _ = perturbation_strategy_dictionary[
+                direct_input_pertubation_strategy]
+        except KeyError:
+            raise Exception("Invalid selection for direct_input_pertubation."
+                            "Must be callable or one of "
+                            "{}".format("-").join(
+                                perturbation_strategy_dictionary.keys()))
+
+    # create output dictionaries
+    direct_pertubation_feature_output_dictionary = defaultdict(list)
+    complete_perturbation_dictionary = defaultdict(list)
+
+    # interaction_perturbation_dictionary = defaultdict(list)
+
+    # check if estimator has predict function
+    # if check then test estimator for prediction and numpy variable return.
+    # It'll raise errors if there are issues with passed in estimator.
+    number_of_features = input_dataframe.shape[1]
+
+    # verify the predict function
+    _ = verify_black_box_function(predict_function, number_of_features)
+
+    # verify data set and black_box editor.
+    _, list_of_column_names = verify_input_data(input_dataframe)
+
+    # convert data to numpy array
+    data = input_dataframe.values
+
+    # get the normal output
+    normal_black_box_output = predict_function(ci_transform(input_dataframe))
+
+    # perform the straight forward linear search at first
+    for current_iteration in range(number_of_runs):
+        random_row_to_select = randint(0, data.shape[0] - 1)
+        random_sample_selected = data[random_row_to_select, :]
+
+        # go over every column
+        for col in range(number_of_features):
+            # get reference vector
+            reference_vector = data[:, col]
+            data_col_ptb = replace_column_of_matrix(
+                np.copy(data),
+                col,
+                random_sample_selected,
+                ptb_strategy="constant-zero")
+            output_constant_col = predict_function(ci_transform(data_col_ptb))
+            if distance_metric == "accuracy":
+                output_difference_col = accuracy(
+                    output_constant_col, normal_black_box_output)
+            else:
+                output_difference_col = mse(
+                    output_constant_col, normal_black_box_output)
+
+            # store independent output by themselves
+            direct_pertubation_feature_output_dictionary[
+                list_of_column_names[col]].append(output_difference_col)
+
+            # now make all the remaining columns of the matrix
+            # $data_copy_with_constant_column$
+            # except $col$ orthogonal to current vector of interest.
+
+            total_ptb_data = obtain_orthogonal_transformed_matrix(
+                data_col_ptb,
+                reference_vector,
+                column_to_skip=col)
+
+            total_transformed_output = predict_function(ci_transform(total_ptb_data))
+
+            if distance_metric == "accuracy":
+                total_difference = accuracy(
+                    total_transformed_output, normal_black_box_output)
+            else:
+                total_difference = mse(
+                    total_transformed_output, normal_black_box_output)
+
+            complete_perturbation_dictionary[
+                list_of_column_names[col]].append(total_difference)
+
+    # figure out the sign of the different features
+    for cols in range(data.shape[1]):
+        sign = detect_feature_sign(predict_function, ci_transform, np.copy(data), cols)
+
+        dictionary_key = list_of_column_names[cols]
+
+        # TO DO - change this
+        # this is wasteful, need to apply the sign once to
+        # summary statistic for each feature.
+        # this works for now
+        for i in range(len(complete_perturbation_dictionary[dictionary_key])):
+            complete_perturbation_dictionary[dictionary_key][i] = (
+                sign * complete_perturbation_dictionary[dictionary_key][i])
+
+    return (AuditResult(complete_perturbation_dictionary),
+            AuditResult(direct_pertubation_feature_output_dictionary))
+
+
+
 def audit_model(predict_function, input_dataframe, distance_metric="mse",
                 direct_input_pertubation_strategy="constant-zero",
                 number_of_runs=10, include_interactions=False,
@@ -264,6 +418,7 @@ def audit_model(predict_function, input_dataframe, distance_metric="mse",
 
     return (AuditResult(complete_perturbation_dictionary),
             AuditResult(direct_pertubation_feature_output_dictionary))
+
 
 
 def main():

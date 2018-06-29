@@ -1,2 +1,3 @@
 from .orthogonal_projection import audit_model
+from .orthogonal_projection import audit_model_with_data_transform
 from .graphing import plot_dependencies
