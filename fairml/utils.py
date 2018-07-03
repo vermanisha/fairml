@@ -76,13 +76,13 @@ def replace_column_of_matrix(X, col_num, random_sample,
     function to work.
 '''
 
-def detect_feature_sign(predict_function, ci_transform, X, col_num):
+def detect_feature_sign_with_data_transform(predict_function, ci_transform, fnames, X, col_num):
 
-    normal_output = predict_function(ci_transform(X))
+    normal_output = predict_function(ci_transform(X, feature_names= fnames))
     column_range = X[:, col_num].max() - X[:, col_num].min()
 
     X[:, col_num] = X[:, col_num] + np.repeat(column_range, X.shape[0])
-    new_output = predict_function(ci_transform(X))
+    new_output = predict_function(ci_transform(X, feature_names = fnames))
 
     diff = new_output - normal_output
     total_diff = np.mean(diff)

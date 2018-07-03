@@ -13,6 +13,7 @@ from .utils import mse
 from .utils import accuracy
 from .utils import replace_column_of_matrix
 from .utils import detect_feature_sign
+from .utils import detect_feature_sign_with_data_transform
 
 # black_box_functionality has functions to verify inputs.
 from .black_box_functionality import verify_black_box_function
@@ -31,11 +32,14 @@ class AuditResult(dict):
         return new_compressed_dict
 
     def __repr__(self):
+        importance_dict = {}
         output = []
         for key, value in self.items():
             importance = np.median(np.array(value))
+            importance_dict[key] = importance
+        for entry in sorted(importance_dict.items(), reverse = True, key = lambda x: x[1]):
             output.append("Feature: {},\t Importance: {}"
-                          .format(key, importance))
+                          .format(entry[0], entry[1]))
         return "\n".join(output)
 
 
@@ -219,7 +223,7 @@ def audit_model_with_data_transform(predict_function,ci_transform, input_datafra
                 col,
                 random_sample_selected,
                 ptb_strategy="constant-zero")
-            output_constant_col = predict_function(ci_transform(data_col_ptb))
+            output_constant_col = predict_function(ci_transform(data_col_ptb, feature_names = input_dataframe.columns))
             if distance_metric == "accuracy":
                 output_difference_col = accuracy(
                     output_constant_col, normal_black_box_output)
@@ -240,7 +244,7 @@ def audit_model_with_data_transform(predict_function,ci_transform, input_datafra
                 reference_vector,
                 column_to_skip=col)
 
-            total_transformed_output = predict_function(ci_transform(total_ptb_data))
+            total_transformed_output = predict_function(ci_transform(total_ptb_data, feature_names = input_dataframe.columns))
 
             if distance_metric == "accuracy":
                 total_difference = accuracy(
@@ -254,7 +258,7 @@ def audit_model_with_data_transform(predict_function,ci_transform, input_datafra
 
     # figure out the sign of the different features
     for cols in range(data.shape[1]):
-        sign = detect_feature_sign(predict_function, ci_transform, np.copy(data), cols)
+        sign = detect_feature_sign_with_data_transform(predict_function, ci_transform, input_dataframe.columns, np.copy(data), cols)
 
         dictionary_key = list_of_column_names[cols]
 
