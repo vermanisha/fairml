@@ -33,14 +33,13 @@ class AuditResult(dict):
 
     def __repr__(self):
         importance_dict = {}
-        output = []
         for key, value in self.items():
             importance = np.median(np.array(value))
             importance_dict[key] = importance
-        for entry in sorted(importance_dict.items(), reverse = True, key = lambda x: x[1]):
-            output.append("Feature: {},\t Importance: {}"
-                          .format(entry[0], entry[1]))
-        return "\n".join(output)
+        #for entry in sorted(importance_dict.items(), reverse = True, key = lambda x: x[1]):
+        #    output.append("Feature: {},\t Importance: {}"
+        #                  .format(entry[0], entry[1]))
+        return importance_dict #"\n".join(output)
 
 
 def get_parallel_vector(v1, v2):
